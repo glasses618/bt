@@ -17,6 +17,9 @@ interface Option {
 
 function App() {
   const [isDrawingMode, setIsDrawingMode] = useState(false);
+  const [isDraggingMode, setIsDraggingMode] = useState(false);
+  const isDraggingRef = useRef<boolean>(false);
+  const lastPosRef = useRef<{ x: number, y: number }>({ x:0, y: 0});
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const fabricCanvasRef = useRef<{
     add: Function,
@@ -28,20 +31,63 @@ function App() {
     isDrawingMode?: boolean,
     getZoom: Function,
     setZoom: Function,
+    clear: Function,
+    height?: number,
+    width?: number,
+    getWidth: Function,
+    getHeight: Function,
+    viewportTransform?: number[],
+    requestRenderAll: Function,
+    setViewportTransform: Function,
   } | null>(null);
 
   useEffect(() => {
     function updateCanvas() {
       fabricCanvasRef.current = new fabric.Canvas(canvasRef.current, {
-        backgroundColor: 'rgb(100,100,200)',
-        selectionColor: 'blue',
+        backgroundColor: 'salmon',
         selectionLineWidth: 2,
         isDrawingMode,
       });
 
       const canvas = fabricCanvasRef.current;
 
-      canvas.loadFromJSON('{"objects":[{"type":"rect","left":50,"top":50,"width":20,"height":20,"fill":"green","overlayFill":null,"stroke":null,"strokeWidth":1,"strokeDashArray":null,"scaleX":1,"scaleY":1,"angle":0,"flipX":false,"flipY":false,"opacity":1,"selectable":true,"hasControls":true,"hasBorders":true,"hasRotatingPoint":false,"transparentCorners":true,"perPixelTargetFind":false,"rx":0,"ry":0},{"type":"circle","left":100,"top":100,"width":100,"height":100,"fill":"red","overlayFill":null,"stroke":null,"strokeWidth":1,"strokeDashArray":null,"scaleX":1,"scaleY":1,"angle":0,"flipX":false,"flipY":false,"opacity":1,"selectable":true,"hasControls":true,"hasBorders":true,"hasRotatingPoint":false,"transparentCorners":true,"perPixelTargetFind":false,"radius":50}],"background":"rgba(0, 0, 0, 0)"}');
+      function drawGrid () {
+        const canvasWidth = canvas.getWidth();
+        const canvasHeight = canvas.getHeight();
+        console.log({canvasWidth, canvasHeight})
+        const longer = canvasWidth > canvasHeight ? canvasWidth : canvasHeight;
+        const vLines = [];
+        const hLines = [];
+        const distance = 40;
+        for (let i = 0; i * distance <= longer; i++) {
+          const lineDef = {
+            fill: 'black',
+            stroke: i % 5 === 0 ? 'rgba(0, 0, 0, 0.7)' : 'rgba(0, 0, 0, 0.1)',
+            strokeWidth: 1,
+            //selectable: false
+          }
+          const vLine = new fabric.Line([i * distance, 0, i * distance, 600], lineDef)
+          const hLine = new fabric.Line([0, i * distance, 600, i * distance], lineDef)          
+          vLines.push(vLine);
+          hLines.push(hLine);
+        }
+        const rect = new fabric.Rect({ 
+          //left: 100, 
+          //top: 100, 
+          width: canvasWidth, 
+          height: canvasHeight, 
+          fill: '#9f9', 
+          //originX: 'left', 
+          //originY: 'top',
+          //centeredRotation: true
+        });
+        var group = new fabric.Group([rect, ...vLines, ...hLines], { hasControls: false, selectable: false });
+        canvas.add(group);
+      }
+
+      drawGrid()
+
+      //canvas.loadFromJSON('{"objects":[{"type":"rect","left":50,"top":50,"width":20,"height":20,"fill":"green","overlayFill":null,"stroke":null,"strokeWidth":1,"strokeDashArray":null,"scaleX":1,"scaleY":1,"angle":0,"flipX":false,"flipY":false,"opacity":1,"selectable":true,"hasControls":true,"hasBorders":true,"hasRotatingPoint":false,"transparentCorners":true,"perPixelTargetFind":false,"rx":0,"ry":0},{"type":"circle","left":100,"top":100,"width":100,"height":100,"fill":"red","overlayFill":null,"stroke":null,"strokeWidth":1,"strokeDashArray":null,"scaleX":1,"scaleY":1,"angle":0,"flipX":false,"flipY":false,"opacity":1,"selectable":true,"hasControls":true,"hasBorders":true,"hasRotatingPoint":false,"transparentCorners":true,"perPixelTargetFind":false,"radius":50}],"background":"rgba(0, 0, 0, 0)"}');
 
       var circle = new fabric.Circle({
         radius: 20, fill: 'green', left: 100, top: 100
@@ -106,48 +152,57 @@ function App() {
         canvas.setZoom(zoom);
         opt.e.preventDefault();
         opt.e.stopPropagation();
-      })
-
-      canvas.on('mouse:down', (opt: Option) => {
-        // var evt = opt.e;
-        // if (evt.altKey === true) {
-        //   this.isDragging = true;
-        //   this.selection = false;
-        //   this.lastPosX = evt.clientX;
-        //   this.lastPosY = evt.clientY;
-        // }
-      });
-      canvas.on('mouse:move', (opt: Option) => {
-        // if (this.isDragging) {
-        //   var e = opt.e;
-        //   var vpt = this.viewportTransform;
-        //   vpt[4] += e.clientX - this.lastPosX;
-        //   vpt[5] += e.clientY - this.lastPosY;
-        //   this.requestRenderAll();
-        //   this.lastPosX = e.clientX;
-        //   this.lastPosY = e.clientY;
-        // }
-      });
-      canvas.on('mouse:up', (opt: Option) => {
-        // on mouse up we want to recalculate new interaction
-        // for all objects, so we call setViewportTransform
-        // this.setViewportTransform(this.viewportTransform);
-        // this.isDragging = false;
-        // this.selection = true;
-      });
-          
-      
+      })    
     }
 
     updateCanvas();
 
     return (() => {
       if (fabricCanvasRef.current) {
-        //fabricCanvasRef.current.off('mouse:down', mouseDownEventHandler);
+        fabricCanvasRef.current.off('mouse:down');
+        fabricCanvasRef.current.off('mouse:wheel');
       }
     });
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  useEffect(() => {
+    if (fabricCanvasRef.current) {
+      const canvas = fabricCanvasRef.current;
+      canvas.on('mouse:down', (opt: Option) => {
+        var evt = opt.e;
+        if (isDraggingMode) {
+          isDraggingRef.current = true;
+          lastPosRef.current.x = evt.clientX;
+          lastPosRef.current.y = evt.clientY;
+        }
+      });
+      canvas.on('mouse:move', (opt: Option) => {
+        if (isDraggingRef.current) {
+          var e = opt.e;
+          var vpt = canvas.viewportTransform ?? [];
+          vpt[4] += e.clientX - lastPosRef.current.x;
+          vpt[5] += e.clientY - lastPosRef.current.y;
+          canvas.requestRenderAll();
+          lastPosRef.current.x = e.clientX;
+          lastPosRef.current.y = e.clientY;
+        }
+      });  
+      canvas.on('mouse:up', (opt: Option) => {
+        // on mouse up we want to recalculate new interaction
+        // for all objects, so we call setViewportTransform
+        canvas.setViewportTransform(canvas.viewportTransform);
+        isDraggingRef.current = false;
+      });
+    }
+
+    return (() => {
+      if (fabricCanvasRef.current) {
+        fabricCanvasRef.current.off('mouse:down');
+        fabricCanvasRef.current.off('mouse:move');
+      }
+    });
+  }, [isDraggingMode])
 
   useEffect(() => {
     if(fabricCanvasRef.current) {
@@ -156,9 +211,12 @@ function App() {
   }, [isDrawingMode])
 
   return (
-    <div style={{ backgroundColor:'teal'}}>
+    <div style={{ }}>
       <button onClick={() => { setIsDrawingMode(prevState => !prevState) }}>
-        {`${isDrawingMode}`}
+        {`drawin mode: ${isDrawingMode}`}
+      </button>
+      <button onClick={() => { setIsDraggingMode(prevState => !prevState) }}>
+        {`drag mode: ${isDraggingMode}`}
       </button>
       <canvas ref={canvasRef} width={600} height={600}/>
     </div>
