@@ -19,3 +19,7 @@ http://fabricjs.com/fabric-intro-part-3
 Creating a minimap for the canvas
 http://fabricjs.com/build-minimap
 
+https://www.tfzx.net/article/300594.html
+
+Apparently setters are removed in the latest version of Fabric.js (using version 2.7.0). You can now simply set the properties on the object directly:
+https://stackoverflow.com/a/55587013
